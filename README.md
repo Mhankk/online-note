@@ -4,7 +4,7 @@ This is a simple online note-taking application written in PHP. It allows users 
 
 **Warning: This application is a demonstration and should NOT be used for storing sensitive information in a production environment.  Security measures are basic and plain text storage is used.**
 
-## Features
+## Features on Version 4
 
 *   **Basic Note Creation and Storage:** Allows users to create and save notes as text files.
 *   **Public and Private Notes:**  Users can choose to make a note public or private.
