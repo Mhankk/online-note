@@ -1,33 +1,44 @@
 <?php
 /*
 Author: Hakim Winahyu
-Description: Online Notes application that allows users to create, store, and view simple text-based notes. This application prioritizes security by implementing several measures to protect against common web vulnerabilities, including Cross-Site Request Forgery (CSRF), Cross-Site Scripting (XSS), and Directory Traversal attacks. It also incorporates a simple CAPTCHA to mitigate bot submissions and limits the display of existing notes for a cleaner user experience.  This script uses plain text files for storage.
-
+Description: Online Notes application that allows users to create, store, and view simple text-based notes.
 Features:
     - Secure note creation and storage in individual text files within a designated directory ("txt").
-    - Input sanitization using `sanitizeInput()` function to prevent XSS vulnerabilities by trimming whitespace, removing slashes, and encoding special characters.
-    - Directory traversal protection by using `basename()` on user-provided filenames and further sanitizing them with a regular expression to allow only alphanumeric characters, underscores, hyphens, and periods. File paths are constructed securely.
-    - CSRF protection through the use of a unique token generated for each session and validated on form submission.
-    - CAPTCHA implementation using a simple arithmetic question to deter automated submissions. The answer is stored in a session variable for validation.
-    - Duplicate filename handling by appending a counter to the filename if a file with the same name already exists.
-    - File size limitation by checking if the filename exceeds a maximum length (50 characters).
-    - Error handling and user feedback through informative alert messages for various scenarios (success, invalid input, CAPTCHA failure, file saving errors, empty filename).
-    - Displaying a limited number of existing notes (maximum 5) to enhance usability and prevent overwhelming the user with a large list.
-    - User-friendly interface using Bootstrap for styling and layout.
-    - Real-time display of success and error messages via the $message variable.
-
-Limitations:
-    - Simple text-based notes only. No support for rich text formatting or attachments.
-    - Limited number of displayed notes (5).  No pagination or search functionality.
-    - Basic CAPTCHA implementation.  May not be robust against determined bots.
-    - Relies on file system for storage.  No database integration.
-    - Error handling is basic.  More detailed logging or error reporting could be implemented.
-    - Security measures, while present, should be reviewed by a security professional for comprehensive protection.
+    - Input sanitization using `sanitizeInput()` function to prevent XSS vulnerabilities.
+    - Directory traversal protection by using `basename()` and additional sanitization.
+    - CSRF protection using a unique token per session.
+    - CAPTCHA implementation using a simple arithmetic question.
+    - Duplicate filename handling by appending a counter to the filename if necessary.
+    - File size limitation by checking if the filename exceeds a maximum length.
+    - Error handling and user feedback through informative alert messages.
+    - Displaying a limited number of existing notes (maximum 5).
+    - User-friendly interface using Bootstrap with a responsive layout.
+    - AJAX submission for note creation/editing.
+    - Theme toggle feature for dark mode (using Bootswatch’s Darkly) and white mode (default Bootstrap).
 */
 
 session_start();
 
+// Process theme selection via GET parameter and store in session
+if (isset($_GET['theme'])) {
+    $theme = ($_GET['theme'] === 'light') ? 'light' : 'dark';
+    $_SESSION['theme'] = $theme;
+    // Redirect to remove the GET parameter from the URL
+    header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
+    exit;
+}
+
+// Default to dark mode if not set
+if (!isset($_SESSION['theme'])) {
+    $_SESSION['theme'] = 'dark';
+}
+$current_theme = $_SESSION['theme'];
+
 $txt_folder = "txt";
+// Create the txt folder if it doesn't exist
+if (!is_dir($txt_folder)) {
+    mkdir($txt_folder, 0755, true);
+}
 
 function sanitizeInput($input) {
     $input = trim($input);
@@ -49,7 +60,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // CSRF token validation
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $csrf_token) {
         $message = "<div class='alert alert-danger'>Invalid request.</div>";
-        exit; // Stop processing the request
+        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+            echo $message;
+            exit;
+        }
+        exit;
     }
 
     if (isset($_POST["captcha"]) && isset($_SESSION["captcha_answer"]) && $_POST["captcha"] == $_SESSION["captcha_answer"]) {
@@ -57,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $filename = basename(sanitizeInput($_POST["filename"])); // Directory traversal protection
         $content = sanitizeInput($_POST["content"]);
 
-        $filename = preg_replace('/[^a-zA-Z0-9\_\-\.]/', '', $filename); // Sanitize filename further
+        $filename = preg_replace('/[^a-zA-Z0-9\_\-\.]/', '', $filename); // Further sanitize filename
 
         $base_filename = $filename;
         $counter = 1;
@@ -76,7 +91,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $message = "<div class='alert alert-danger'>Filename is too long.</div>";
         } else if (file_put_contents($filepath, $content) !== false) {
             $file_link = $txt_folder . "/" . $filename . ".txt";
-            $message = "<div class='alert alert-success'>Note saved successfully!  <a href='" . $file_link . "' target='_blank'>View Note</a></div>";
+            $message = "<div class='alert alert-success'>Note saved successfully! <a href='" . $file_link . "' target='_blank'>View Note</a></div>";
         } else {
             $message = "<div class='alert alert-danger'>Error saving note. Please check folder permissions.</div>";
         }
@@ -84,8 +99,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         $message = "<div class='alert alert-danger'>Incorrect CAPTCHA. Please try again.</div>";
     }
-}
 
+    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+        echo $message;
+        exit;
+    }
+}
 
 $num1 = random_int(1, 10);
 $num2 = random_int(1, 10);
@@ -93,7 +112,6 @@ $captcha_question = "What is " . $num1 . " + " . $num2 . "?";
 $captcha_answer = $num1 + $num2;
 
 $_SESSION["captcha_answer"] = $captcha_answer;
-
 ?>
 
 <!DOCTYPE html>
@@ -103,24 +121,50 @@ $_SESSION["captcha_answer"] = $captcha_answer;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Online Notes</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <style>
-        body {
-            padding-top: 20px;
-        }
-    </style>
+    <?php if ($current_theme === 'dark'): ?>
+        <!-- Bootswatch Darkly Theme for Dark Mode -->
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootswatch/4.5.2/darkly/bootstrap.min.css">
+        <style>
+            body {
+                padding-top: 20px;
+                background-color: #343a40;
+                color: #f8f9fa;
+            }
+            .table, a, label, h1, h2, p {
+                color: #f8f9fa;
+            }
+        </style>
+    <?php else: ?>
+        <!-- Default Bootstrap for White Mode -->
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+        <style>
+            body {
+                padding-top: 20px;
+                background-color: #fff;
+                color: #212529;
+            }
+        </style>
+    <?php endif; ?>
 </head>
 
 <body>
     <div class="container">
+        <div class="d-flex justify-content-end mt-2">
+            <?php if ($current_theme === 'dark'): ?>
+                <a href="?theme=light" class="btn btn-secondary btn-sm">Switch to Light Mode</a>
+            <?php else: ?>
+                <a href="?theme=dark" class="btn btn-dark btn-sm">Switch to Dark Mode</a>
+            <?php endif; ?>
+        </div>
         <h1>Online Notes</h1>
         <p><em>Don't store any sensitive information</em></p>
         <div class="message-note">
             <?php echo $message; ?>
         </div>
 
-        <form method="post">
-            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">  <div class="form-group">
+        <form id="noteForm" method="post">
+            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+            <div class="form-group">
                 <label for="filename">Filename:</label>
                 <input type="text" class="form-control" id="filename" name="filename" required>
             </div>
@@ -139,45 +183,64 @@ $_SESSION["captcha_answer"] = $captcha_answer;
 
         <hr>
 
-<h2>Existing Notes</h2>
-<ul>
-    <?php
-    if (is_dir($txt_folder)) {
-        $files = array_diff(scandir($txt_folder), ['.', '..']); // Remove . and ..
+        <h2>Existing Notes</h2>
+        <ul>
+            <?php
+            if (is_dir($txt_folder)) {
+                $files = array_diff(scandir($txt_folder), ['.', '..']);
+                usort($files, function ($a, $b) use ($txt_folder) {
+                    return filemtime($txt_folder . "/" . $b) - filemtime($txt_folder . "/" . $a);
+                });
 
-        // Sort files by modification time (newest first)
-        usort($files, function ($a, $b) use ($txt_folder) {
-            $time_a = filemtime($txt_folder . "/" . $a);
-            $time_b = filemtime($txt_folder . "/" . $b);
-            return $time_b - $time_a; // Descending order
-        });
-
-        $file_count = 0;
-        foreach ($files as $file) {
-            $safe_filename = basename($file);
-            echo "<li><a href='" . $txt_folder . "/" . $safe_filename . "' target='_blank'>" . htmlspecialchars($safe_filename, ENT_QUOTES, 'UTF-8') . "</a></li>";
-            $file_count++;
-
-            if ($file_count >= 5) {
-                break;
+                $file_count = 0;
+                foreach ($files as $file) {
+                    $safe_filename = basename($file);
+                    echo "<li><a href='" . $txt_folder . "/" . $safe_filename . "' target='_blank'>" . htmlspecialchars($safe_filename, ENT_QUOTES, 'UTF-8') . "</a></li>";
+                    $file_count++;
+                    if ($file_count >= 5) {
+                        break;
+                    }
+                }
+                if ($file_count === 0) {
+                    echo "<li>No notes found.</li>";
+                }
+            } else {
+                echo "<li>No notes found.</li>";
             }
-        }
-
-        if ($file_count === 0) {
-            echo "<li>No notes found.</li>";
-        }
-
-    } else {
-        echo "<li>No notes found.</li>";
-    }
-    ?>
-</ul>
+            ?>
+        </ul>
 
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <!-- Use full jQuery (not slim) for AJAX support -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <?php if ($current_theme === 'dark'): ?>
+        <script src="https://stackpath.bootstrapcdn.com/bootswatch/4.5.2/darkly/bootstrap.min.js"></script>
+    <?php else: ?>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <?php endif; ?>
+    <script>
+        $(document).ready(function(){
+            $("#noteForm").on("submit", function(e){
+                e.preventDefault();
+                $.ajax({
+                    type: "POST",
+                    url: "",
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        $(".message-note").html(response);
+                        if(response.indexOf("alert-success") !== -1){
+                            $("#noteForm")[0].reset();
+                        }
+                    },
+                    error: function() {
+                        $(".message-note").html("<div class='alert alert-danger'>An error occurred. Please try again.</div>");
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 
 </html>
