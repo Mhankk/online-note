@@ -66,7 +66,7 @@ This is a versatile online note-taking application written in PHP that enables u
 
 1. **Enter a filename for your note.**
 2. **Write your note's content in the text area.**
-3. **Check the "Set Private Note" checkbox** if you want the note to be private.
+3. **Check the "Set Private Note" checkbox** if you want the note to be private. (Only Version 4)
 4. **Answer the CAPTCHA question.**
 5. **Click the "Save Note" button.**
 
